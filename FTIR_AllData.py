@@ -6,19 +6,10 @@ Created on Mon Feb  1 13:18:39 2021
 """
 import os
 import glob
-import pymc3 as pm
-import scipy as sp
-import numpy as np
 import pandas as pd
 import scipy.signal as ss
-import statsmodels.api as sm
 import matplotlib.pyplot as plt
 from matplotlib.ticker import AutoMinorLocator
-from mpl_toolkits.mplot3d import Axes3D
-from sklearn.decomposition import PCA as sk_pca
-from sklearn.preprocessing import StandardScaler
-from sklearn import svm
-from sklearn.cluster import KMeans
 
 direct = 'C:\\Users\\Armando\\OneDrive\\Documents\\Academic\\Dissertation\\Preliminary Study\\FTIR Results'
 
@@ -41,17 +32,20 @@ df = df.loc[:,~df.columns.duplicated()]
 
 # Define X and Y to plot all spectra
 X = 'wavelength'
-Y = df.columns.to_list()[1:]
+#Y = df.columns.to_list()[1:]
 
-fig, ax = plt.subplots()
-ax.plot(df[X], df[Y])
-ax.invert_xaxis()
-ax.xaxis.set_minor_locator(AutoMinorLocator())
-ax.yaxis.set_minor_locator(AutoMinorLocator())
-ax.set_xlabel(r'Wavenumber ($cm^{-1}$)')
-ax.set_ylabel(r'Absorbance')
+for i in df.columns.to_list()[1:]:
+    Y = i
+    fig, ax = plt.subplots()
+    ax.plot(df[X], df[Y])
+    ax.invert_xaxis()
+    ax.xaxis.set_minor_locator(AutoMinorLocator())
+    ax.yaxis.set_minor_locator(AutoMinorLocator())
+    ax.set_title(i)
+    ax.set_xlabel(r'Wavenumber ($cm^{-1}$)')
+    ax.set_ylabel(r'Absorbance')
 
-plt.show()
+    plt.show()
 
 # Do SG 2nd derivative and then plot again to see if they normalize
 sgdf = df['wavelength'].to_frame()
