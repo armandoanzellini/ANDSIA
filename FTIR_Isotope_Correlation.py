@@ -30,7 +30,7 @@ noise_list = [1, 3, 5, 6, 8, 10, 15, 17, 21, 22, 26, 28, 29, 36, 37, 38, 39, 44,
 noise_list += [2, 9, 12, 14, 23, 26, 27, 31, 32, 33, 50]
 ''' 
 
-direct = 'C:\\Users\\Armando\\OneDrive\\Documents\\Academic\\Dissertation\\Preliminary Study\\'
+direct = 'C:\\Users\\aanzellini\\OneDrive\\Documents\\Academic\\Dissertation\\Preliminary Study\\'
 
 file = 'ANDSIA_FTIR_Results_2Prime no corr.xlsx'
 fname = file.strip('.xlsx')
@@ -403,12 +403,18 @@ print( '\n', 'STD: ', delta_sd, '\n',
              'PLS: ', pls_rmse, '\n')
 
 # Create a line and plot all together for PLS
-x_corr = np.linspace(red['PLS_Delta'].min(), red['PLS_Delta'].max(), 50)
+x_corr = np.linspace(-6, -4, 100)
 y_corr = x_corr
 
-fig, ax = plt.subplots(figsize = [4, 4])
+band1_y = y_corr + 0.6 # create bands that collect 0.6 per mil interpretive differences
+band2_y = y_corr - 0.6
+
+fig, ax = plt.subplots(figsize = [6, 4])
+ax.set_title("IRIS $\delta^{13}$C Results", family="serif")
 ax.scatter(red['PLS_Delta'], red['DeltaC'], color = 'k', alpha = 0.7)
 ax.plot(x_corr, y_corr , 'k--')
+ax.plot(x_corr, band1_y, 'k:')
+ax.plot(x_corr, band2_y, 'k:')
 '''
 for row in red.iterrows():
     label = df.loc[row[0]]['Sample ID']
@@ -422,8 +428,12 @@ for row in red.iterrows():
 '''
 ax.xaxis.set_minor_locator(AutoMinorLocator())
 ax.yaxis.set_minor_locator(AutoMinorLocator())
-ax.set_xlabel(r'PLS Results $\delta^{13}$C')
-ax.set_ylabel(r'Original $\delta^{13}$C')
+ax.set_xlim([-5.5, -4])
+ax.set_ylim([-5.5, -4])
+ax.set_xlabel(r'IRIS $\delta^{13}$C')
+ax.set_ylabel(r'IRMS $\delta^{13}$C')
+
+fig.savefig(direct + 'PLS_results_wBands.png', bbox_inches='tight', dpi = 300 )
 plt.show()
 
 # Create a line and plot all together for BYS
