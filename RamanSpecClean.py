@@ -20,7 +20,7 @@ import matplotlib.pyplot as plt
 from pyspectra.readers.read_spc import read_spc_dir
 from matplotlib.ticker import AutoMinorLocator
 
-direct = 'C:\\Users\\aanzellini\\OneDrive\\Documents\\Academic\\Dissertation\\Patakfalva-Papdomb\\'
+direct = 'D:\\Users\\Armando\\OneDrive\\Documents\\Academic\\Dissertation\\Patakfalva-Papdomb\\'
 
 filedir = 'Mand Method Test\\'
 
@@ -34,8 +34,8 @@ df_spc, dict_spc = read_spc_dir(direct + filedir)
 # transpose df and add index
 spc_df = df_spc.transpose()
 
-# Select only rows that will provide valueable data
-spc_df = spc_df.loc[(spc_df.index > 100) & (spc_df.index < 3295)]
+# Select only rows that will provide valueable data (see ortiz-Herrero et al. 2021)
+spc_df = spc_df[350:2000]
 
 # Normalize all spectra to 0
 # find minimum for each spectrum and subtract to bring to zero
@@ -59,16 +59,13 @@ df = df.rename(columns = col_dict) # rename columns to integers
 
 df = df.reindex(sorted(df.columns), axis=1) # sort columns in ascending order
 
-# Limit wavenumbers to expected values for bone
-df = df[df.index > 700]
-
 # Plot to see all scans together
-f, ax =plt.subplots(1, figsize=(15,5))
+f, ax = plt.subplots(1, figsize=(15,5))
 ax.plot(df)
 ax.grid()
+ax.autoscale(enable=True, axis='x', tight=True)
 ax.set_ylabel('Signal')
 ax.set_xlabel("Wavenumber (cm$^{-1}$)")
-ax.set_xlim([700, 3250])
 plt.show()
 
 # Average data together to see what comes out
@@ -80,8 +77,8 @@ fig, ax = plt.subplots(1, figsize= [15, 5])
 # Spectral plot
 ax.plot(df['mean'], '-', color = 'k', linewidth=0.6)
 
-# Fix axis direction, set title, add labels
-ax.set_xlim([700, 3250])
+# Fix axis limits, set title, add labels
+ax.autoscale(enable=True, axis='x', tight=True)
 ax.set_title('Average of all scans: ' + samp)
 ax.set_xlabel("Wavenumber (cm$^{-1}$)", family="serif",  fontsize=12)
 ax.set_ylabel("Absorbance",family="serif",  fontsize=12)
@@ -149,8 +146,8 @@ fig, ax = plt.subplots(1, figsize= [15, 5])
 # Spectral plot
 ax.plot(df['arPLS'], '-', color = 'k', linewidth=0.6)
 
-# Fix axis direction, set title, add labels
-ax.set_xlim([700, 3250])
+# Fix axis scale, set title, add labels
+ax.autoscale(enable=True, axis='x', tight=True)
 ax.set_title('arPLS Corrected Spectrum: ' + samp)
 ax.set_xlabel("Wavenumber (cm$^{-1}$)", family="serif",  fontsize=12)
 ax.set_ylabel("Absorbance",family="serif",  fontsize=12)
@@ -172,8 +169,8 @@ fig, ax = plt.subplots(1, figsize= [15, 5])
 # Spectral plot
 ax.plot(df['PLSsmooth'], '-', color = 'k', linewidth=0.6)
 
-# Fix axis direction, set title, add labels
-ax.set_xlim([700, 3250])
+# Fix axis scale, set title, add labels
+ax.autoscale(enable=True, axis='x', tight=True)
 ax.set_title('Smoothed arPLS Corrected Spectrum: ' + samp)
 ax.set_xlabel("Wavenumber (cm$^{-1}$)", family="serif",  fontsize=12)
 ax.set_ylabel("Absorbance",family="serif",  fontsize=12)
@@ -208,9 +205,9 @@ fig, ax = plt.subplots(1, figsize= [15, 5])
 ax.plot(df['PLSsmooth'], '-', color = 'k', linewidth=0.6)
 ax.plot(df['BLsmooth'], '--', color = 'k', linewidth=0.6)
 
-# Fix axis direction, set title, add labels
-ax.set_xlim([700, 3250])
-ax.set_title('Baseline to arPLS Comparison: ' + samp)
+# Fix axis scale, set title, add labels
+ax.autoscale(enable=True, axis='x', tight=True)
+ax.set_title('Polynomial Baseline to arPLS Comparison: ' + samp)
 ax.set_xlabel("Wavenumber (cm$^{-1}$)", family="serif",  fontsize=12)
 ax.set_ylabel("Absorbance",family="serif",  fontsize=12)
 
@@ -220,5 +217,6 @@ ax.yaxis.set_minor_locator(AutoMinorLocator())
 
 plt.show()
 
-
+# export new smoothed and corrected spectrum as a CSV (using arPLS not baseline)
+df['PLSsmooth'].to_csv(direct + f'{samp}_Raman.csv')
 
