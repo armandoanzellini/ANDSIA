@@ -1,0 +1,26 @@
+from setuptools import setup, find_packages
+
+VERSION = '0.0.1' 
+DESCRIPTION = 'ANDSIA Dissertation Data Analysis'
+LONG_DESCRIPTION = 'Python scripts and packages used for data analysis in my dissertation on the use of alternative non-destructive method for stable isotope analysis'
+
+# Setting up
+setup(
+        name="IRViS", 
+        version=VERSION,
+        author="Armando Anzellini",
+        author_email="armandoanzellini@gmail.com",
+        description=DESCRIPTION,
+        long_description=LONG_DESCRIPTION,
+        packages=find_packages(),
+        install_requires=[], # add any additional packages that
+        
+        keywords=['python'],
+        classifiers= [
+            "Development Status :: 3 - Alpha",
+            "Intended Audience :: Education",
+            "Programming Language :: Python :: 3",
+            "Operating System :: MacOS :: MacOS X",
+            "Operating System :: Microsoft :: Windows",
+        ]
+)
