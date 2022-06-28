@@ -53,13 +53,13 @@ donordata = pd.read_excel(direct + samdir + "DonorResidence18OReducedPrioritized
 # clean up data making UTID the index and dropping unnecessary columns
 donordata.dropna(inplace=True)
 
-dropcols = ['KEY', 'Country', 'Lat', 'Long'] # columns not necessary
+dropcols = ['UTID', 'Country', 'Lat', 'Long'] # columns not necessary
 
 donordata.drop(dropcols, axis = 1, inplace=True)
 
-donordata['UTID'] = [x.lstrip('UT') for x in donordata['UTID']]
+# donordata['UTID'] = [x.lstrip('UT') for x in donordata['UTID']]
 
-donordata.set_index('UTID', inplace=True) # set UTID as index for future relates
+donordata.set_index('KEY', inplace=True) # set UTID as index for future relates
 
 # Opening up the donor raman spectra
 # now list the folders in the donors directory to open each file
@@ -135,7 +135,8 @@ for dup in dupdir[1:]:
 
 # FILES LOADED; Analysis Begins
 # cut spectra to ROI and process data to remove baseline
-df = df.loc[775:1900]
+df    = df.loc[775:1900]
+dupdf = dupdf.loc[775:1900] 
 
 # now define arPLS function to baseline correct
 def arPLS_baseline(y, ratio=1e-6, lam=100, niter=10, full_output=False):
@@ -196,11 +197,82 @@ cordf = pd.concat(map(lambda col: arPLS_baseline(df[col],
                        tqdm(df.columns)), 
                    axis=1)
 
+cordpdf = pd.concat(map(lambda col: arPLS_baseline(dupdf[col], 
+                                              ratio = 1e-6, 
+                                              lam=1e4, 
+                                              niter=5500, 
+                                              full_output=True)[1].rename(col), 
+                       tqdm(dupdf.columns)), 
+                   axis=1)
 
+# normalize all data in cordf
+cordf   = cordf/cordf.max()
 
-# check duplications for precision
+cordpdf = cordpdf/cordpdf.max() 
+
+# check that duplicates and originals closely correlate after correction
+# check Raman duplications for precision
 dupdons = list(set([i[0] for i in dupdf.columns])) # list ID for duplicated donors
 
-duporgs = df[dupdons] # get orginal data for duplicated donors
+duporgs = cordf[dupdons] # get orginal data for duplicated donors
 
-rho, p = stats.spearmanr()
+spearmandict = {} 
+for col in duporgs.columns: 
+    rho, p = stats.spearmanr(duporgs[col], cordpdf[col])
+    spearmandict[col] = (rho, p)
+
+
+
+# figure out QC criteria for each original spectrum
+def qc(data, col):
+    # find creterion peak values
+    peak1val = data[col].loc[800:850].max()
+    peak2val = data[col].loc[850:925].max()
+    
+    # now categorize
+    if   peak1val <= 0.075 and peak2val <= 0.075:
+        cat = 'great'
+    elif peak1val > 0.3 or peak2val > 0.3:
+        cat = 'bad'
+    elif peak1val > 0.15 and peak2val > 0.15:
+        cat = 'bad'
+    elif peak1val <= 0.15 and peak2val <= 0.15:
+        cat = 'good'
+    else:
+        cat = 'fair'
+        
+    return cat
+
+qcdict = {}
+for col in cordf.columns:
+    qcdict[col] = qc(cordf, col)
+    
+dpqcdict = {}
+for col in cordpdf.columns:
+    dpqcdict[col] = qc(cordpdf, col)
+
+# add blank rows for peak locations since model doesn't use them but will
+# expect them to keep track of x-val location
+cordf.loc['PO4 Peak'] = 0
+cordf.loc['CO3 Peak'] = 0
+
+cordpdf.loc['PO4 Peak'] = 0
+cordpdf.loc['CO3 Peak'] = 0
+
+# now select only the scans that were of at least good quality
+scans   = [key for key,val in qcdict.items() if val == 'good' or val == 'great']
+
+dpscans = [key for key,val in dpqcdict.items() if val == 'good' or val == 'great']
+
+gooddf  = cordf[scans]
+
+goodpdf = cordpdf[dpscans]
+
+# Now calculate isotope values for both originals and duplicates
+# first implement standard scaler prior to analysis
+scaler = StandardScaler(with_mean = False, with_std = True)
+
+
+d13cvals = pd.concat(map(lambda ix: d13cmod.predict(gooddf.T.loc[ix]), 
+                         tqdm(gooddf.T.index)), 
+                     axis = 1)

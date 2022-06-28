@@ -4,11 +4,12 @@ Created on Fri Jun 24 12:26:15 2022
 
 @author: Armando Anzellini
 
-Analysis of the skeeltal remains representing indivdiuals from the 
+Analysis of the skeleltal remains representing individuals from the 
 Patakfalva-Papdomb site. Analyses include comparisons to previous apatite 
-isotopic data from the site as well as the building of models to estimate 
-isotopic values from apatite using Raman spectrometry. This script outputs
-plots, joblib files, txt files, and excel files with all resulting data.
+isotopic data from the site as well as the building of linear regresion models 
+to estimate isotopic values from apatite using Raman spectrometry. 
+This script outputs plots, joblib files, txt files, and excel files with all 
+resulting data.
 
 All analyses in this script have been presented in doi: 
 Ph.D. Dissertation by Armando Anzellini
@@ -19,7 +20,6 @@ import re
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import matplotlib.ticker as plticker
 from tqdm import tqdm
 from scipy import stats
 from scipy import signal
@@ -27,10 +27,10 @@ from scipy import sparse
 from joblib import dump
 from numpy.linalg import norm
 from scipy.sparse import linalg
-from matplotlib.ticker import AutoMinorLocator
-from sklearn.linear_model import Lasso, LassoCV
+from matplotlib.ticker import AutoMinorLocator, NullLocator
+from sklearn.linear_model import LassoCV
 from sklearn.preprocessing import StandardScaler
-from sklearn.model_selection import train_test_split, RepeatedKFold
+from sklearn.model_selection import RepeatedKFold
 
 # Define directories for each of the datasets to be opened
 
@@ -649,9 +649,9 @@ taudf = taudf.merge(eta2(taudf['tau']).rename('eta2'),
                     right_index=True)
 
 # export tau and index results as excel sheets
-taudf.to_excel(direct + dfdir + 'Results_KendallTau.xlsx')
+#taudf.to_excel(direct + dfdir + 'Results_KendallTau.xlsx')
 
-sampdf[indices].to_excel(direct + dfdir + 'Results_Indices.xlsx')
+#sampdf[indices].to_excel(direct + dfdir + 'Results_Indices.xlsx')
 
 
 
@@ -676,7 +676,7 @@ tcordf = tcordf.join(pd.DataFrame.from_dict(corpeaks,
                                         columns=['PO4peak', 'CO3peak']))
 
 #join isotope data to df
-tcordf = tcordf.join(sampdf[['d13Cap', 'd18Ovsmow', 'd18Ovpdb']])
+tcordf = tcordf.join(sampdf[['d13Cap', 'd18Ovpdb']])
 
 
 
@@ -689,107 +689,101 @@ qcix = sampdf[sampdf['QC'].isin(('good', 'great'))].index
 good_tcordf = tcordf.loc[qcix]
 
 # define columns that will be Y and those that will be X
-y_cols = ['d13Cap' , 'd18Ovsmow', 'd18Ovpdb']
+y_cols = ['d13Cap' , 'd18Ovpdb']
 x_cols = [col for col in tcordf.columns if col not in y_cols]
 
-# trying to find the best alpha for lasso
-def lasso(data, x, y, alpha, plot = True, name = '', split=True, rand = 0, print_out = False):    
+# creating linear model using Lasso with Cross Validation (10-fold, 200 repeats)
+def lasso(data, x, y,  plot = True, name = '', print_out = False):    
     
     # define predictor and response variables
     Y = data[y].to_numpy()
     X = data[x].to_numpy()
     
-    # train/test split if split == True
-    if split:
-        X_train, X_test, Y_train, Y_test = train_test_split(X, Y, 
-                                                            random_state = rand,
-                                                            test_size = 0.1)
-    else:
-        X_train = X
-        Y_train = Y
     
     # Apply StandardScaler to get unit variance and 0 mean
     scaler = StandardScaler(with_mean = False, with_std = True)
     
-    X_train = scaler.fit_transform(X_train)
+    X = scaler.fit_transform(X)
     
-    if split:
-        X_test = scaler.fit_transform(X_test)
+    
+    # define cross validation method
+    splits  = 10
+    repeats = 300
+    
+    cv = RepeatedKFold(n_splits=splits, n_repeats = repeats)
     
     # define model
-    lasso = Lasso(alpha = alpha, fit_intercept = True)
+    lasso = LassoCV(n_alphas = 1000, 
+                    max_iter = 5500, 
+                    cv = cv, 
+                    n_jobs = -1)
     
     # run the model
-    model = lasso.fit(X_train, Y_train)
+    model = lasso.fit(X, Y)
     
     # now get r2 for training
-    r2_train = model.score(X_train, Y_train)
+    r2 = model.score(X, Y)
     
-    # get # of coefficients from Lasso
+    # get # of coefficients from Lasso and alpha
     expvar = np.count_nonzero(model.coef_)
     
-    # calculate RMSE of training data
-    mse_train  = np.sum(np.square(model.predict(X_train).flatten()-Y_train))/len(Y)
-    rmse_train = np.sqrt(mse_train)
+    alpha = model.alpha_
     
-    # calculate mean absolute error for training data
-    mae_train = np.mean(np.abs(model.predict(X_train).flatten()-Y_train))
+    # calculate RMSE of test data for the selected alpha
+    mse  = model.mse_path_.mean(axis=-1).min()
+    rmse_test = np.sqrt(mse)
     
-    if split:
-        # calculate RMSE and MAE for test data
-                
-        # calculate RMSE of testing data
-        mse_test  = np.sum(np.square(model.predict(X_test).flatten()-Y_test))/len(Y)
-        rmse_test = np.sqrt(mse_test)
-        
-        # calculate mean absolute error for testing data
-        mae_test = np.mean(np.abs(model.predict(X_test).flatten()-Y_test))
-        
-        if print_out:
-            print('Model with Train/Test Split at 10%\n'     +\
-                  f'R2 of training data:   {r2_train}\n'     +\
-                  f'RMSE of training data: {rmse_train}\n'   +\
-                  f'MAE of trainig data:   {mae_train}\n'      +\
-                  '\n'  +\
-                  f'RMSE of testing data:  {rmse_test}\n'   +\
-                  f'MAE of testing data:   {mae_test}\n'           +\
-                  '\n' +\
-                  f'# of Coefficients:     {expvar}\n' +\
-                  f'Alpha (lambda):        {alpha}')
+    # calculate MAE for all data
+    pred_vals = model.predict(X)
+    abserror  = np.abs(pred_vals - Y)
     
-    metrics = {'R2': r2_train, 
-               'RMSEtrain': rmse_train,
-               'MAEtrain': mae_train,
+    mae       = np.mean(abserror)
+    
+    if print_out:
+        print(f'LassoCV Model with {splits}-fold CV {repeats} repeats\n'     +\
+              f'R2 model:              {r2}\n'     +\
+              f'Alpha (lambda):        {alpha}\n'  +\
+              f'# of Coefficients:     {expvar}\n' +\
+              '\n'  +\
+              f'MSE of testing data:   {mse}\n'   +\
+              f'RMSE of testing data:  {rmse_test}\n'  +\
+              '\n' +\
+              f'MAE of all data:       {mae}')
+    
+    metrics = {'Title:' : f'LassoCV Model with {splits}-fold CV {repeats} repeats\n',
+                'R2': r2,
+               'Alpha(lambda)': alpha,
+               'Ncoefs'  : expvar,
+               'MSEtest' : mse,
                'RMSEtest': rmse_test,
-               'MAEtest': mae_test,
-               'Ncoefs' : expvar,
-               'Alpha(lambda)': alpha}
-                
-               
-                
+               'MAE:'    : mae}
+            
     if plot:   
         # define the thresholds dependent on the isotope being explored
         if   y == 'd18Ovpdb':
             rid = 3.1
         elif y == 'd13Cap':
             rid = 1.2
+        else:
+            rid = max(Y) - min(Y)
         
         # Create subplot
         fig, ax = plt.subplots(1, figsize= [7, 6])
         
         # Scatter plot of training data
-        ax.scatter(model.predict(X_train), Y_train, marker = 'o', 
-                                                    color  = 'k', 
-                                                    alpha  = 0.7)
+        ax.scatter(model.predict(X), Y, 
+                                       marker = 'o', 
+                                       color  = 'k', 
+                                       alpha  = 0.7)
     
         # add annotations of sample size, r2, adjr2, and rmse
-        ax.annotate(f'N       =  {len(Y_train)}',        
+        ax.annotate(f'N       =  {len(Y)}',        
                                     (.69, .244),  
                                     xycoords = 'subfigure fraction')                  
-        ax.annotate(f'R$^2$      = {r2_train: .2f}',        
+        ax.annotate(f'R$^2$      = {r2: .2f}',        
                                     (.69, .211),  
                                     xycoords = 'subfigure fraction')
-        ax.annotate(f'RMSE = {rmse_train: .2f}',       
+        ax.annotate('RMSE$_{test}$' + f' = {rmse_test: .2f}',       
                                     (.69, .178),  
                                     xycoords = 'subfigure fraction')
         ax.annotate(f'Coefficients = {expvar}',        
@@ -821,161 +815,90 @@ def lasso(data, x, y, alpha, plot = True, name = '', split=True, rand = 0, print
         ax.xaxis.set_minor_locator(AutoMinorLocator())
         ax.yaxis.set_minor_locator(AutoMinorLocator())
         
-        plt.savefig(figout + y + '_Lasso_results_wBands.png', bbox_inches='tight', dpi = 300 )
+        plt.savefig(figout + y + '_Lasso_results_wBands.png', 
+                    bbox_inches='tight', 
+                    dpi = 300 )
         # show figure and clear for next
         plt.show()
         
-        if split:
-            # plot Absolute Error for each test value and marginal boxplot
-            fig, (ax1, ax2) = plt.subplots(ncols = 2,
-                                           sharey = 'row',
-                                           figsize= [7, 6], 
-                                           gridspec_kw={'width_ratios': [5, 1],
-                                                        'hspace': 0.5, 
-                                                        'wspace': 0.05})
-            
-            # plot absolute error per testing point
-            pointnum = np.linspace(1, len(Y_test), len(Y_test))
-            abserror = np.abs(model.predict(X_test).flatten()-Y_test)
-            
-            ax1.scatter(pointnum, abserror, marker = 'o', 
-                                           color  = 'k', 
-                                           alpha  = 0.7)
-            
-            # now make the boxplot
-            ax2.boxplot(abserror, widths = 0.7,
-                            patch_artist=True,
-                    boxprops=dict(color = 'k',linestyle='-', 
-                                  facecolor = '0.5', alpha = 0.5),
-                    flierprops=dict(marker = '*'),
-                    medianprops=dict(color = 'k',linestyle='-'),
-                    whiskerprops=dict(           linestyle='-'),
-                    capprops=dict(               linestyle='-'))
-            
-            
-            # Line for 0.6 real interpretive difference in absolute error
-            ax1.axhline(rid, linestyle = '--', color = 'k')
-            
-            # Fix axis scale, set title, add labels
-            fig.suptitle(f'Absolute Error for Test Samples: {name}', y=0.92,
-                          family          = 'serif', 
-                          math_fontfamily = 'dejavuserif')
-            ax1.set_xlabel('Test Sample Number', 
-                          family='serif', fontsize = 12, 
-                          math_fontfamily = 'dejavuserif')
-            ax1.set_ylabel(f'Absolute Error: {name}', 
-                          family = 'serif', fontsize = 12, 
-                          math_fontfamily = 'dejavuserif')
-            
-            # Set minor ticks
-            ax1.yaxis.set_minor_locator(AutoMinorLocator())
-    
-            # set major ticks along x axis
-            loc = plticker.MultipleLocator(base=1.0) # this locator puts ticks at regular intervals
-            ax1.xaxis.set_major_locator(loc)
-            
-            # add grid at major ticks
-            ax1.grid(axis='y', alpha = 0.5)
-            
+        # plot Absolute Error for each test value and marginal boxplot
+        fig, (ax1, ax2) = plt.subplots(ncols = 2,
+                                       sharey = 'row',
+                                       figsize= [7, 6], 
+                                       gridspec_kw={'width_ratios': [5, 1],
+                                                    'hspace': 0.5, 
+                                                    'wspace': 0.05})
+        
+        # plot absolute error per testing point
+        pointnum = np.linspace(1, len(Y), len(Y))
+        
+        ax1.scatter(pointnum, abserror, marker = 'o', 
+                                       color  = 'k', 
+                                       alpha  = 0.7)
+        
+        # now make the boxplot
+        ax2.boxplot(abserror, widths = 0.7,
+                        patch_artist=True,
+                boxprops=dict(color = 'k',linestyle='-', 
+                              facecolor = '0.5', alpha = 0.5),
+                flierprops=dict(marker = '*'),
+                medianprops=dict(color = 'k',linestyle='-'),
+                whiskerprops=dict(           linestyle='-'),
+                capprops=dict(               linestyle='-'))
+        
+        
+        # Line for 0.6 real interpretive difference in absolute error
+        ax1.axhline(rid, linestyle = '--', color = 'k')
+        
+        # Fix axis scale, set title, add labels
+        fig.suptitle(f'Absolute Error for Test Samples: {name}', y=0.92,
+                      family          = 'serif', 
+                      math_fontfamily = 'dejavuserif')
+        ax1.set_xlabel('Test Sample Number', 
+                      family='serif', fontsize = 12, 
+                      math_fontfamily = 'dejavuserif')
+        ax1.set_ylabel(f'Absolute Error: {name}', 
+                      family = 'serif', fontsize = 12, 
+                      math_fontfamily = 'dejavuserif')
+        
+        # Set minor ticks
+        ax1.yaxis.set_minor_locator(AutoMinorLocator())
 
-            
-            # Remove labels from boxplot
-            ax2.axes.yaxis.set_visible(False)
-            ax2.axes.xaxis.set_visible(False)
-            
-            plt.savefig(figout + y + '_MAE_results_wBox.png', 
-                        bbox_inches='tight', 
-                        dpi = 300 )
-            # show figure and clear for next
-            plt.show()
+        # Set no minor ticks along x axis        
+        ax1.xaxis.set_minor_locator(NullLocator())
+        
+        # add grid at major ticks
+        ax1.grid(axis='y', alpha = 0.5)
+        
+        
+        # Remove labels from boxplot
+        ax2.axes.yaxis.set_visible(False)
+        ax2.axes.xaxis.set_visible(False)
+        
+        plt.savefig(figout + y + '_MAE_results_wBox.png', 
+                    bbox_inches='tight', 
+                    dpi = 300 )
+        # show figure and clear for next
+        plt.show()
         
   
     return model, metrics
 
-# define alpha sleeection as a function
-def alpha_select(colnum, plot = False):        
-    
-    alphas    = []
-    
-    # run for d13Cap model to find optimum alpha of lasso
-    for j in range(0, 100, 1):
-        trainmae  = {}
-        testmae   = {}
-        trainr    = {}
-        testrmse  = {}
-        trainrmse = {}
-        coefalpha = {}
-        
-        for i in tqdm(np.arange(0.005, 1.0, 0.001)):
-            mod, metrics = lasso(good_tcordf, 
-                                 x_cols, 
-                                 y_cols[colnum], 
-                                 alpha = i, 
-                                 name = '$\delta^{13}C_{apatite}$',
-                                 split = True,
-                                 plot = False,
-                                 rand = j)
-            
-            trainrmse[np.count_nonzero(mod.coef_)] = metrics['RMSEtrain']
-            testrmse[np.count_nonzero(mod.coef_)]  = metrics['RMSEtest']
-            trainmae[np.count_nonzero(mod.coef_)]  = metrics['MAEtrain']
-            testmae[np.count_nonzero(mod.coef_)]   = metrics['MAEtest']
-            trainr[np.count_nonzero(mod.coef_)]    = metrics['R2']
-            coefalpha[np.count_nonzero(mod.coef_)] = i
-        
-        # get RMSE and R2 values since intent is to maximize r2 while
-        # minimizing test rmse
-        rmsetest = pd.DataFrame.from_dict(testrmse, 
-                                          orient = 'index', 
-                                          columns = ['RMSE'])
-        r2train  = pd.DataFrame.from_dict(trainr, 
-                                          orient = 'index', 
-                                          columns = ['R2'])   
-        
-        # normalize both values for consistent scale
-        rmse = (rmsetest/rmsetest.max()).sort_index()
-        r2   = (r2train/r2train.max()).sort_index()
-        
-        # find coef number where largest difference and r2 is bigger
-        # making sure to avoid the last possible values
-        # due to known errors at that extreme
-        ix = ((r2['R2'] - rmse['RMSE']).iloc[:-3]).idxmax()
-        
-        alphas += [coefalpha[ix]]
-        
-        if plot:
-            plt.plot(r2, label = 'R2')
-            plt.plot(rmse, label = 'RMSE_test')
-            plt.axvline(ix, color = 'k')
-            plt.legend()
-            plt.show()
 
-    return alphas
-
-
-alphac = alpha_select(0, plot=False)
-alphao = alpha_select(2, plot=False)
-
-# Selecting the mean of the alphas found using the function above
+# run lasso wityh cross-validation on d13c
 d13cmod, d13cmetrics = lasso(good_tcordf, 
                              x_cols, 
-                             y_cols[0], 
-                             alpha = np.mean(alphac), 
+                             y_cols[0],  
                              name = '$\delta^{13}C_{apatite}$',
-                             split = True,
-                             plot = False,
-                             rand = 1 ,
+                             plot = True,
                              print_out = True)
 
-# Selecting the largest alpha that still gives low MAE and high R2; d18O
+# run lasso with crossvalidation on d18Ovpdb
 d18omod, d18ometrics = lasso(good_tcordf, 
                              x_cols, 
-                             y_cols[2], 
-                             alpha = np.mean(alphao), 
+                             y_cols[1], 
                              name = '$\delta^{18}O_{vpdb}$',
-                             split = True,
-                             plot = False,
-                             rand = 1 ,
+                             plot = True,
                              print_out = True)
 
 # now get which coefficients are being used for each model
@@ -1010,8 +933,8 @@ export_metrics(d13cmetrics, posfreqc, negfreqc, 'd13Capatite')
 export_metrics(d18ometrics, posfreqo, negfreqo, 'd18Ovpdb')
 
 # Export band frequencies and coefficients (and intercept if necessary) as xlsx
-d13cmodbands = pd.Series(d13cmod.coef_, index = df.index, name = 'd13C Bands')
-d18omodbands = pd.Series(d18omod.coef_, index = df.index, name = 'd18O Bands')
+d13cmodbands = pd.Series(d13cmod.coef_, index = x_cols, name = 'd13C Bands')
+d18omodbands = pd.Series(d18omod.coef_, index = x_cols, name = 'd18O Bands')
 
 # get only the non-zero coefficients
 d13cmodbands = d13cmodbands.iloc[d13cmodbands.to_numpy().nonzero()]
