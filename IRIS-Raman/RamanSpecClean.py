@@ -15,21 +15,22 @@ baseline correction for IRViS
 import os
 import re
 import numpy as np
+import scipy as sp
 import pandas as pd
 import scipy.signal as ss
+import matplotlib.pyplot as plt
+import numpy.polynomial.polynomial as nppoly
 from scipy import sparse
 from numpy.linalg import norm
 from scipy.sparse import linalg
-import matplotlib.pyplot as plt
-import numpy.polynomial.polynomial as nppoly
 from pyspectra.readers.read_spc import read_spc_dir, read_spc
 from matplotlib.ticker import AutoMinorLocator
 
-direct = 'D:\\Users\\Armando\\OneDrive\\Documents\\Academic\\Dissertation\\Patakfalva-Papdomb\\'
+direct = 'C:\\Users\\aanzellini\\OneDrive\\Documents\\Academic\\Dissertation\\Patakfalva-Papdomb\\'
 
-filedir = 'Samples\\'
+filedir = 'Calibrations\\V1\\'
 
-file    = 's1external-15-30-3pm-contact.spc'
+file    = 's1external-15-30-3pm-contactalcohol.spc'
 
 # Read the spc files from the directory
 class RamanRead():
@@ -124,6 +125,9 @@ class RamanRead():
         # use coldict to rename columns for legibility
         df.rename(columns = coldict, inplace = True)
         
+        # ensure minimum for each spectrum and subtract to bring baseline to 0
+        df   = df.apply(lambda x: x-x.min())
+        
         if averaged:
             df = self.averaged(df, plot = plot)
             
@@ -143,6 +147,9 @@ class RamanRead():
         
         # use coldict to rename columns for legibility
         df.rename(columns = coldict, inplace = True)
+        
+        # ensure minimum for each spectrum and subtract to bring baseline to 0
+        df   = df.apply(lambda x: x-x.min())
         
         if averaged:
             df = self.averaged(df, plot = plot)
@@ -167,15 +174,16 @@ class RamanRead():
             df_spc.name = fname
             df = df_spc.to_frame()
         
-        # ensure minimum for each spectrum and subtract to bring baseline to zero
+        # ensure minimum for each spectrum and subtract to bring baseline to 0
         df   = df.apply(lambda x: x-x.min())
         
         return df
     
 class RamanClean():
     def __init__(self, spec_sr):
-        self.sr   = spec_sr[350:2000] # following Ortiz et al 2021
+        self.sr   = spec_sr[775:2000] # see notes
         self.samp = spec_sr.name
+        
         
     def minima_baseline(self, sr, plot = False):
         samp = self.samp
@@ -213,7 +221,7 @@ class RamanClean():
             
             plt.show()
         
-        return corr_sr
+        return corr_bl, corr_sr
     
     def polyfit_baseline(self, sr, plot = False):
         samp = self.samp
@@ -257,7 +265,7 @@ class RamanClean():
             
             plt.show()
             
-        return corr_sr
+        return base_sr, corr_sr
      
     def arPLS_baseline(self, y, ratio=1e-6, lam=100, niter=10, full_output=False):
         # Define function for arPLS baseline correction
@@ -301,21 +309,77 @@ class RamanClean():
             return z, d, info
         else:
             return z
+    
+    def oscillation_removal(self, algo, per = 'mean'):
+        sr = self.sr
+
+        if algo == 'arPLS':
+            base, corrected, info = self.arPLS_baseline(sr, lam=1e4,
+                                                         niter=5000,
+                                                         full_output=True)
+        elif algo == 'minima':
+            base, corrected = self.minima_baseline(sr)
+        elif algo == 'polyfit':
+            base, corrected = self.polyfit_baseline(sr)
+        else:
+            Exception(f'Alogrithm does not have a {algo} type')
+                
+        # write a dampened sin wave to remove fluorescent oscillations
+        # find the peak heights of oscillations
+        peaklocs = ss.find_peaks(corrected, prominence=0.3)
+        peaks = corrected.iloc[peaklocs[0]][:850]
+
+        # get difference between peak locations to know oscillation period
+        oscillation = [j-i for i, j in zip(peaks.index[:-1], peaks.index[1:])]
+
+        # get mean of oscillation period
+        muperiod = np.mean(oscillation)
+
+        # get mode of oscillation period
+        moperiod = sp.stats.mode(oscillation)[0][0]
+
+        # create an x-array for sine wave
+        if per == 'mean':
+            period = muperiod
+        elif per == 'mode':
+            period = moperiod
+
+        x = corrected.index.to_numpy()
+
+        amplitude = peaks.iloc[0]
+        period    = (2 * np.pi)/period
+        intercept = peaks.index[0] - period
+
+        # define decay constant
+        lam = 0.002
+
+        damp  = np.exp(-lam * (x-350))
+
+        sine = amplitude* damp * np.sin(period * x + intercept)
+
+        sine = pd.Series(sine, index = x, name = 'Dampened Sine')
+
+        #sin = sine.clip(lower=0)
+
+        return sine
 
     def apply_baseline(self, algo, normalize = True, plot = False):        
         samp = self.samp
         sr = self.sr
 
         if algo == 'arPLS':
-            _, corrected, info = self.arPLS_baseline(sr, lam=1e4,
+            base, corrected, info = self.arPLS_baseline(sr, lam=1e4,
                                                          niter=5000,
                                                          full_output=True)
         elif algo == 'minima':
-            corrected = self.minima_baseline(sr)
+            base, corrected = self.minima_baseline(sr)
         elif algo == 'polyfit':
-            corrected = self.polyfit_baseline(sr)
+            base, corrected = self.polyfit_baseline(sr)
         else:
             Exception(f'Alogrithm does not have a {algo} type')
+        
+        sin = self.oscillation_removal(sr)
+        plt.plot(sin + base)
 
         # add corrected spectrum to df
         corrected.name = samp + algo
@@ -401,7 +465,15 @@ class RamanClean():
         
         return sr, corrected, smoothed
     
-    
+
+if __name__ == "__main__":
+    df = RamanRead().singlefile(direct + filedir, file)
+    for i in df.columns:
+        sr, corrected, smoothed = RamanClean(df[i]).run()
+
+
+
+
 
 # export new smoothed and corrected spectrum as a CSV (using arPLS not baseline)
 # df['PLSsmooth'].to_csv(direct + f'{samp}_Raman.csv')
