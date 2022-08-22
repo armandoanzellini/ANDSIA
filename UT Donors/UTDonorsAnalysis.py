@@ -304,6 +304,9 @@ cisovals = pd.Series(d13cvals, name = 'd13C')
 cisovals.index.names = ['Individual', 'Element'] # add index names
 
 # combine in new df with diagenesis indices and export to excel
+# first make cisovals a dataframe
+cisodf = pd.DataFrame(cisovals)
+
 # now define calculation of the CIraman index
 def ci_raman(data, add_baseline=False, plot=False):
     """
@@ -429,8 +432,8 @@ def ci_raman(data, add_baseline=False, plot=False):
 
 
 # add ci_raman values to sampdf
-for col in tqdm(cordf.columns):
-    sampdf.loc[col,'CIraman'] = ci_raman(cordf[col], 
+for col in tqdm(gooddf.columns):
+    cisodf.loc[col,'CIraman'] = ci_raman(gooddf[col], 
                                              add_baseline=True,
                                                 plot = False)
     
@@ -535,8 +538,8 @@ def amIPO4raman(data, smooth=False, plot=False):
     return amipo4
 
 # add amIPO4 values to sampdf
-for col in tqdm(cordf.columns):
-    sampdf.loc[col,'AmIPO4'] = amIPO4raman(cordf[col], 
+for col in tqdm(gooddf.columns):
+    cisodf.loc[col,'AmIPO4'] = amIPO4raman(gooddf[col], 
                                                smooth=True, 
                                                    plot=False)
 
@@ -574,18 +577,18 @@ def peakfind(data, plot=False):
 
 # run peak finder on the corrected df
 corpeaks = {}
-for col in cordf.columns:
-    corpeaks[col] = peakfind(cordf[col], plot=False)
+for col in gooddf.columns:
+    corpeaks[col] = peakfind(gooddf[col], plot=False)
     
 # get CO3 peak value which now is equivalent to CO3/PO4 ratio, add to sampdf
 for key, val in corpeaks.items():
-    ap, ac = cordf[key].loc[[val[0], val[1]]]
+    ap, ac = gooddf[key].loc[[val[0], val[1]]]
     # since the ratio of val at c by val at p has already been normalized
-    sampdf.loc[key, 'CO3-PO4'] = ac 
+    cisodf.loc[key, 'CO3-PO4'] = ac 
 
 
 
-# cisovals.to_excel(direct + 'Results\\' + 'UTDonorIsotopeValues.xlsx')
+# cisodf.to_excel(direct + 'Results\\' + 'UTDonorIsotopeValues.xlsx')
 
 # GET VALUES GROUPED BY INDIVIDUALS
 cisodat = {col_name:col for col_name, col in cisovals.groupby('Individual')}

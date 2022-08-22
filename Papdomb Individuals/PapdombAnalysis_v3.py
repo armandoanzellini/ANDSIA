@@ -915,7 +915,7 @@ def lasso(data, x, y, alpha, plot = True, name = '', split=True, rand = 1, print
             
             # plot absolute error per testing point
             pointnum = np.linspace(1, len(Y_test), len(Y_test))
-            abserror = np.abs(model.predict(X_test).flatten()-Y_test)
+            abserror = model.predict(X_test).flatten()-Y_test
             
             ax1.scatter(pointnum, abserror, marker = 'o', 
                                            color  = 'k', 
@@ -936,13 +936,13 @@ def lasso(data, x, y, alpha, plot = True, name = '', split=True, rand = 1, print
             ax1.axhline(rid, linestyle = '--', color = 'k')
             
             # Fix axis scale, set title, add labels
-            fig.suptitle(f'Absolute Error for Test Samples: {name}', y=0.92,
+            fig.suptitle(f'Error for Test Samples: {name}', y=0.92,
                           family          = 'serif', 
                           math_fontfamily = 'dejavuserif')
             ax1.set_xlabel('Test Sample Number', 
                           family='serif', fontsize = 12, 
                           math_fontfamily = 'dejavuserif')
-            ax1.set_ylabel(f'Absolute Error: {name}', 
+            ax1.set_ylabel('Error (IRIS - IRMS)', 
                           family = 'serif', fontsize = 12, 
                           math_fontfamily = 'dejavuserif')
             

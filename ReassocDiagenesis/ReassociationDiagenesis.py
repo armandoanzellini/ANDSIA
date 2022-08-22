@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from scipy.special import expit
+from scipy.stats import spearmanr, pearsonr, describe
 from collections import namedtuple
 from sklearn.linear_model import LogisticRegressionCV, LogisticRegression
 from sklearn.model_selection import RepeatedKFold
@@ -136,13 +137,92 @@ def pred_mets_cm(cm):
     return res(sensitivity, specificity, ppv, npv)
 
 
-
 # upload the isotope and diagenesis values and test for correlations, and plot
-ppisodf = pd.read_excel(direct + resdir + 'PatakfalvaUnassociatedIsotope_Anzellini.xlsx', sheet_name = 'All')
+ppisodf = pd.read_excel(direct + resdir + 'PatakfalvaUnassociatedIsotope_Anzellini.xlsx', 
+                        sheet_name = 'All',
+                        index_col = 0)
 
-ppisodf = ppisodf[['CIraman', 'FluorRatio',	'AmIPO4', 'CO3-PO4', 'd13Cap', 'd18Ovpdb']]
+ppisodf = ppisodf.iloc[:-32] # select only the non-duplicated spectra
 
-utisodf = pd.read_excel(direct + resdir + 'PatakfalvaUnassociatedIsotope_Anzellini.xlsx', sheet_name = 'All')
+ppisodf = ppisodf.loc[ppisodf['QC'].isin(['good', 'great'])] # select good+ qc
+
+utisodf = pd.read_excel(direct + resdir + 'UTDonorIsotopeValues.xlsx', 
+                        sheet_name = 0,
+                        index_col = [0, 1])
+
+# Now only select the useful columns for both
+ppisodf = ppisodf[['CIraman','AmIPO4', 'CO3-PO4', 'd13Cap', 'd18Ovpdb']]
+
+utisodf = utisodf[['CIraman','AmIPO4', 'CO3-PO4', 'd13C']]
 
 # check correlation on each alone (IRMS and IRIS separately)
+# get descriptive stats for all non isotope data columns in each df
+ppstats = []
+for col in ppisodf[['CIraman','AmIPO4', 'CO3-PO4']]:
+    ppstats += [col, describe(ppisodf[col])]
+    
+
+utstats = []
+for col in utisodf[['CIraman','AmIPO4', 'CO3-PO4']]:
+    utstats += [col, describe(utisodf[col])]
+    
+# UT stats shows some values above desired levels
+ami_out = utisodf.loc[utisodf['AmIPO4']  > 19.4].count()[0]
+cp_out  = utisodf.loc[(utisodf['CO3-PO4'] < 0.23) | (utisodf['CO3-PO4'] > 0.4)].count()[0]
+
+
+# check outlier detection
+def out_detect(data, col):
+    std  = data[col].std()
+    mean = data[col].mean()
+    out  = data[col].loc[abs(data[col] - mean) > std*3.2]
+    if out.empty:
+        print('No outlier detected in the distribution')
+        return []
+    if not out.empty:
+        print('Outliers were detected in the distribution')
+        return out.index
+
+
+for col in ppisodf:
+    out_detect(ppisodf, col)
+    
+# no outliers detected in ppisodf, so checking pearsonsr
+ppcorr13C = []
+for col in ppisodf[['CIraman','AmIPO4', 'CO3-PO4']]:
+    ppcorr13C += [col, pearsonr(ppisodf['d13Cap'], ppisodf[col])]
+    
+ppcorr18O = []
+for col in ppisodf[['CIraman','AmIPO4', 'CO3-PO4']]:
+    ppcorr18O += [col, pearsonr(ppisodf['d18Ovpdb'], ppisodf[col])]
+
+outliers = []
+    
+for col in utisodf:
+    outliers += [col, out_detect(utisodf, col)]
+
+# due to the presence of outliers in the UT data, a test of monotnicity
+# rather than linear correlation is used, Spearman's rho
+utcorr = []
+for col in utisodf[['CIraman','AmIPO4', 'CO3-PO4']]:
+    utcorr += [col, spearmanr(utisodf['d13C'], utisodf[col])]
+    
+
+# since indices outside desired levels, testing them separately
+utincorr_ami  = []
+utoutcorr_ami = []
+for col in utisodf[['CIraman','AmIPO4', 'CO3-PO4']]:
+    utincorr_ami  += [col, spearmanr(utisodf.loc[utisodf['AmIPO4']  < 19.4]['d13C'],
+                     utisodf.loc[utisodf['AmIPO4']  < 19.4][col])]
+    utoutcorr_ami += [col, spearmanr(utisodf.loc[utisodf['AmIPO4']  > 19.4]['d13C'],
+                     utisodf.loc[utisodf['AmIPO4']  > 19.4][col])]
+    
+cp_outdf = utisodf.loc[(utisodf['CO3-PO4'] < 0.23) | (utisodf['CO3-PO4'] > 0.4)]
+cp_indf  = utisodf.loc[(utisodf['CO3-PO4'] >= 0.23) & (utisodf['CO3-PO4'] <= 0.4)]
+
+utincorr_cp  = []
+utoutcorr_cp = []
+for col in utisodf[['CIraman','AmIPO4', 'CO3-PO4']]:
+    utincorr_cp  += [col, spearmanr(cp_indf['d13C'],  cp_indf[col])]
+    utoutcorr_cp += [col, spearmanr(cp_outdf['d13C'], cp_outdf[col])]
 
